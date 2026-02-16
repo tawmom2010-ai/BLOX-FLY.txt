@@ -1,0 +1,436 @@
+-- Mobile Flying Script with EXTRA SMOOTH Movement + FIXED Stop Button
+-- Place this LocalScript in StarterPlayer > StarterPlayerScripts
+
+local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
+local TweenService = game:GetService("TweenService")
+local player = Players.LocalPlayer
+
+-- Wait for character to fully load
+local character = player.Character or player.CharacterAdded:Wait()
+wait(0.5)
+local humanoid = character:WaitForChild("Humanoid")
+local rootPart = character:WaitForChild("HumanoidRootPart")
+
+local flying = false
+local flySpeed = 50
+local bodyVelocity
+local bodyGyro
+
+-- Smooth movement variables
+local currentVelocity = Vector3.new(0, 0, 0)
+local targetVelocity = Vector3.new(0, 0, 0)
+local acceleration = 0.25
+
+-- Movement state for controls
+local moveDirection = {
+	forward = false,
+	backward = false,
+	left = false,
+	right = false
+}
+
+-- Create GUI
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "FlyPanel"
+screenGui.ResetOnSpawn = false
+screenGui.Parent = player:WaitForChild("PlayerGui")
+
+-- Main Control Panel
+local mainFrame = Instance.new("Frame")
+mainFrame.Size = UDim2.new(0, 120, 0, 100)
+mainFrame.Position = UDim2.new(0, 10, 0, 10)
+mainFrame.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+mainFrame.BorderSizePixel = 1
+mainFrame.BorderColor3 = Color3.fromRGB(255, 255, 255)
+mainFrame.ClipsDescendants = true
+mainFrame.Visible = true
+mainFrame.Parent = screenGui
+
+-- Title
+local title = Instance.new("TextLabel")
+title.Size = UDim2.new(1, -38, 0, 18)
+title.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+title.BorderSizePixel = 0
+title.Text = "Fly"
+title.TextColor3 = Color3.fromRGB(255, 255, 255)
+title.TextSize = 12
+title.Font = Enum.Font.SourceSansBold
+title.Parent = mainFrame
+
+-- Close Button (RED X)
+local closeButton = Instance.new("TextButton")
+closeButton.Size = UDim2.new(0, 18, 0, 18)
+closeButton.Position = UDim2.new(1, -37, 0, 0)
+closeButton.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
+closeButton.BorderSizePixel = 0
+closeButton.Text = "X"
+closeButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+closeButton.TextSize = 12
+closeButton.Font = Enum.Font.SourceSansBold
+closeButton.Parent = mainFrame
+
+-- Minimize Button
+local minimizeButton = Instance.new("TextButton")
+minimizeButton.Size = UDim2.new(0, 18, 0, 18)
+minimizeButton.Position = UDim2.new(1, -19, 0, 0)
+minimizeButton.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+minimizeButton.BorderSizePixel = 0
+minimizeButton.Text = "_"
+minimizeButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+minimizeButton.TextSize = 12
+minimizeButton.Font = Enum.Font.SourceSansBold
+minimizeButton.Parent = mainFrame
+
+-- Fly Toggle Button (Start is GREEN)
+local flyButton = Instance.new("TextButton")
+flyButton.Size = UDim2.new(0, 90, 0, 24)
+flyButton.Position = UDim2.new(0.5, -45, 0, 22)
+flyButton.BackgroundColor3 = Color3.fromRGB(50, 200, 50)
+flyButton.BorderSizePixel = 0
+flyButton.Text = "Start"
+flyButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+flyButton.TextSize = 12
+flyButton.Font = Enum.Font.SourceSansBold
+flyButton.Parent = mainFrame
+
+-- Speed Label
+local speedLabel = Instance.new("TextLabel")
+speedLabel.Size = UDim2.new(1, 0, 0, 14)
+speedLabel.Position = UDim2.new(0, 0, 0, 50)
+speedLabel.BackgroundTransparency = 1
+speedLabel.Text = "Speed: " .. flySpeed
+speedLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+speedLabel.TextSize = 10
+speedLabel.Font = Enum.Font.SourceSans
+speedLabel.Parent = mainFrame
+
+-- Speed Decrease Button
+local decreaseButton = Instance.new("TextButton")
+decreaseButton.Size = UDim2.new(0, 40, 0, 22)
+decreaseButton.Position = UDim2.new(0, 12, 0, 70)
+decreaseButton.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
+decreaseButton.BorderSizePixel = 0
+decreaseButton.Text = "-"
+decreaseButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+decreaseButton.TextSize = 14
+decreaseButton.Font = Enum.Font.SourceSansBold
+decreaseButton.Parent = mainFrame
+
+-- Speed Increase Button
+local increaseButton = Instance.new("TextButton")
+increaseButton.Size = UDim2.new(0, 40, 0, 22)
+increaseButton.Position = UDim2.new(0, 68, 0, 70)
+increaseButton.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
+increaseButton.BorderSizePixel = 0
+increaseButton.Text = "+"
+increaseButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+increaseButton.TextSize = 14
+increaseButton.Font = Enum.Font.SourceSansBold
+increaseButton.Parent = mainFrame
+
+-- Movement Controls Frame
+local controlsFrame = Instance.new("Frame")
+controlsFrame.Size = UDim2.new(0, 130, 0, 130)
+controlsFrame.Position = UDim2.new(1, -140, 0.5, -65)
+controlsFrame.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+controlsFrame.BackgroundTransparency = 0.3
+controlsFrame.BorderSizePixel = 0
+controlsFrame.Visible = false
+controlsFrame.Parent = screenGui
+
+-- Create movement buttons
+local buttonSize = 35
+local buttonColor = Color3.fromRGB(60, 60, 60)
+local buttonPressedColor = Color3.fromRGB(100, 150, 255)
+
+-- Forward Button
+local forwardBtn = Instance.new("TextButton")
+forwardBtn.Size = UDim2.new(0, buttonSize, 0, buttonSize)
+forwardBtn.Position = UDim2.new(0.5, -buttonSize/2, 0, 10)
+forwardBtn.BackgroundColor3 = buttonColor
+forwardBtn.Text = "↑"
+forwardBtn.TextSize = 18
+forwardBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+forwardBtn.Font = Enum.Font.SourceSansBold
+forwardBtn.Parent = controlsFrame
+
+-- Left Button
+local leftBtn = Instance.new("TextButton")
+leftBtn.Size = UDim2.new(0, buttonSize, 0, buttonSize)
+leftBtn.Position = UDim2.new(0, 10, 0.5, -buttonSize/2)
+leftBtn.BackgroundColor3 = buttonColor
+leftBtn.Text = "←"
+leftBtn.TextSize = 18
+leftBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+leftBtn.Font = Enum.Font.SourceSansBold
+leftBtn.Parent = controlsFrame
+
+-- Right Button
+local rightBtn = Instance.new("TextButton")
+rightBtn.Size = UDim2.new(0, buttonSize, 0, buttonSize)
+rightBtn.Position = UDim2.new(1, -buttonSize - 10, 0.5, -buttonSize/2)
+rightBtn.BackgroundColor3 = buttonColor
+rightBtn.Text = "→"
+rightBtn.TextSize = 18
+rightBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+rightBtn.Font = Enum.Font.SourceSansBold
+rightBtn.Parent = controlsFrame
+
+-- Backward Button
+local backwardBtn = Instance.new("TextButton")
+backwardBtn.Size = UDim2.new(0, buttonSize, 0, buttonSize)
+backwardBtn.Position = UDim2.new(0.5, -buttonSize/2, 1, -buttonSize - 10)
+backwardBtn.BackgroundColor3 = buttonColor
+backwardBtn.Text = "↓"
+backwardBtn.TextSize = 18
+backwardBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+backwardBtn.Font = Enum.Font.SourceSansBold
+backwardBtn.Parent = controlsFrame
+
+-- Button press handlers
+local function setupButton(button, direction)
+	button.InputBegan:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then
+			moveDirection[direction] = true
+			button.BackgroundColor3 = buttonPressedColor
+		end
+	end)
+	
+	button.InputEnded:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then
+			moveDirection[direction] = false
+			button.BackgroundColor3 = buttonColor
+		end
+	end)
+end
+
+setupButton(forwardBtn, "forward")
+setupButton(backwardBtn, "backward")
+setupButton(leftBtn, "left")
+setupButton(rightBtn, "right")
+
+-- Make panel draggable
+local dragging = false
+local dragInput
+local dragStart
+local startPos
+
+local function update(input)
+	local delta = input.Position - dragStart
+	mainFrame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+end
+
+title.InputBegan:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+		dragging = true
+		dragStart = input.Position
+		startPos = mainFrame.Position
+		
+		input.Changed:Connect(function()
+			if input.UserInputState == Enum.UserInputState.End then
+				dragging = false
+			end
+		end)
+	end
+end)
+
+title.InputChanged:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+		dragInput = input
+	end
+end)
+
+UserInputService.InputChanged:Connect(function(input)
+	if input == dragInput and dragging then
+		update(input)
+	end
+end)
+
+-- Flying Functions
+local function startFlying()
+	if not rootPart or not humanoid then return end
+	
+	flying = true
+	flyButton.Text = "Stop"
+	flyButton.BackgroundColor3 = Color3.fromRGB(200, 50, 50)  -- RED for Stop
+	controlsFrame.Visible = true  -- SHOW arrow buttons
+	
+	-- Reset velocity for smooth start
+	currentVelocity = Vector3.new(0, 0, 0)
+	targetVelocity = Vector3.new(0, 0, 0)
+	
+	bodyVelocity = Instance.new("BodyVelocity")
+	bodyVelocity.Velocity = Vector3.new(0, 0, 0)
+	bodyVelocity.MaxForce = Vector3.new(4000, 4000, 4000)
+	bodyVelocity.P = 1000
+	bodyVelocity.Parent = rootPart
+	
+	bodyGyro = Instance.new("BodyGyro")
+	bodyGyro.MaxTorque = Vector3.new(9000, 9000, 9000)
+	bodyGyro.P = 3000
+	bodyGyro.Parent = rootPart
+	
+	humanoid.PlatformStand = true
+	
+	print("Flying started!")
+end
+
+local function stopFlying()
+	flying = false
+	flyButton.Text = "Start"
+	flyButton.BackgroundColor3 = Color3.fromRGB(50, 200, 50)  -- GREEN for Start
+	controlsFrame.Visible = false  -- HIDE arrow buttons
+	
+	-- Destroy physics objects
+	if bodyVelocity then 
+		bodyVelocity:Destroy() 
+		bodyVelocity = nil
+	end
+	if bodyGyro then 
+		bodyGyro:Destroy()
+		bodyGyro = nil
+	end
+	
+	-- FIXED: Properly reset humanoid so you fall to ground
+	if humanoid then
+		humanoid.PlatformStand = false
+		wait(0.1)
+		humanoid:ChangeState(Enum.HumanoidStateType.Freefall)
+	end
+	
+	-- Reset velocity smoothing
+	currentVelocity = Vector3.new(0, 0, 0)
+	targetVelocity = Vector3.new(0, 0, 0)
+	
+	-- Reset movement state
+	for key in pairs(moveDirection) do
+		moveDirection[key] = false
+	end
+	
+	print("Flying stopped!")
+end
+
+-- Button Connections
+flyButton.MouseButton1Click:Connect(function()
+	if flying then
+		stopFlying()
+	else
+		startFlying()
+	end
+end)
+
+decreaseButton.MouseButton1Click:Connect(function()
+	flySpeed = math.max(10, flySpeed - 10)
+	speedLabel.Text = "Speed: " .. flySpeed
+end)
+
+increaseButton.MouseButton1Click:Connect(function()
+	flySpeed = math.min(200, flySpeed + 10)
+	speedLabel.Text = "Speed: " .. flySpeed
+end)
+
+closeButton.MouseButton1Click:Connect(function()
+	mainFrame.Visible = false
+	controlsFrame.Visible = false
+	if flying then
+		stopFlying()
+	end
+	print("Panel hidden! Type /script.txt in chat to show it again.")
+end)
+
+-- Minimize with smooth animation
+local minimized = false
+local tweenInfo = TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+
+minimizeButton.MouseButton1Click:Connect(function()
+	minimized = not minimized
+	
+	if minimized then
+		local tween = TweenService:Create(mainFrame, tweenInfo, {Size = UDim2.new(0, 120, 0, 18)})
+		tween:Play()
+		minimizeButton.Text = "+"
+	else
+		local tween = TweenService:Create(mainFrame, tweenInfo, {Size = UDim2.new(0, 120, 0, 100)})
+		tween:Play()
+		minimizeButton.Text = "_"
+	end
+end)
+
+-- Chat command
+player.Chatted:Connect(function(message)
+	if message == "/script.txt" then
+		mainFrame.Visible = true
+		print("Panel shown!")
+	end
+end)
+
+-- Flying Controls with EXTRA SMOOTH movement and camera
+RunService.Heartbeat:Connect(function()
+	if flying and bodyVelocity and bodyGyro and rootPart then
+		local camera = workspace.CurrentCamera
+		if not camera then return end
+		
+		local direction = Vector3.new(0, 0, 0)
+		
+		-- Arrow button controls
+		if moveDirection.forward then
+			direction = direction + camera.CFrame.LookVector
+		end
+		if moveDirection.backward then
+			direction = direction - camera.CFrame.LookVector
+		end
+		if moveDirection.left then
+			direction = direction - camera.CFrame.RightVector
+		end
+		if moveDirection.right then
+			direction = direction + camera.CFrame.RightVector
+		end
+		
+		-- Keyboard support for PC
+		if UserInputService:IsKeyDown(Enum.KeyCode.W) then
+			direction = direction + camera.CFrame.LookVector
+		end
+		if UserInputService:IsKeyDown(Enum.KeyCode.S) then
+			direction = direction - camera.CFrame.LookVector
+		end
+		if UserInputService:IsKeyDown(Enum.KeyCode.A) then
+			direction = direction - camera.CFrame.RightVector
+		end
+		if UserInputService:IsKeyDown(Enum.KeyCode.D) then
+			direction = direction + camera.CFrame.RightVector
+		end
+		
+		-- Calculate target velocity
+		if direction.Magnitude > 0 then
+			direction = direction.Unit
+			targetVelocity = direction * flySpeed
+		else
+			targetVelocity = Vector3.new(0, 0, 0)
+		end
+		
+		-- SMOOTH ACCELERATION: Lerp current velocity towards target
+		currentVelocity = currentVelocity:Lerp(targetVelocity, acceleration)
+		
+		-- Apply smoothed velocity
+		bodyVelocity.Velocity = currentVelocity
+		
+		-- SMOOTHER camera-based rotation
+		bodyGyro.CFrame = bodyGyro.CFrame:Lerp(camera.CFrame, 0.35)
+	end
+end)
+
+-- Character respawn handling
+player.CharacterAdded:Connect(function(newCharacter)
+	wait(0.5)
+	character = newCharacter
+	humanoid = character:WaitForChild("Humanoid")
+	rootPart = character:WaitForChild("HumanoidRootPart")
+	
+	if flying then
+		stopFlying()
+	end
+end)
+
+print("Fixed fly script loaded!")
